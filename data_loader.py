@@ -36,11 +36,11 @@ class BaseballData(Dataset):
         self.repo_url = repo_url
         self.image_size = image_size
 
-        print("📦 Initializing dataset...")
+        print("Initializing dataset...")
         self.raw_data = self._consolidate_from_github_repo()
         if self.raw_data.empty:
             raise ValueError("No data found — check repo path or annotations.")
-        print(f"✅ Dataset loaded with {len(self.raw_data)} samples")
+        print(f"Dataset loaded with {len(self.raw_data)} samples")
 
     # -------------------------------------------------------------------------
     #  Helper methods (previous standalone functions, now encapsulated)
@@ -81,7 +81,7 @@ class BaseballData(Dataset):
                             break
 
                     if not image_found:
-                        print(f"⚠️ Missing frame image for {base_name}_frame{frame}")
+                        print(f"Missing frame image for {base_name}_frame{frame}")
                         continue
 
                     frame_cache[frame] = flat_pixels
