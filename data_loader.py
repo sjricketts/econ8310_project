@@ -36,11 +36,11 @@ class BaseballData(Dataset):
         self.repo_url = repo_url
         self.image_size = image_size
 
-        print("Initializing dataset...")
+        print("📦 Initializing dataset...")
         self.raw_data = self._consolidate_from_github_repo()
         if self.raw_data.empty:
             raise ValueError("No data found — check repo path or annotations.")
-        print(f"Dataset loaded with {len(self.raw_data)} samples")
+        print(f"✅ Dataset loaded with {len(self.raw_data)} samples")
 
     # -------------------------------------------------------------------------
     #  Helper methods (previous standalone functions, now encapsulated)
@@ -149,6 +149,7 @@ class BaseballData(Dataset):
 
         return pd.concat(all_dfs, ignore_index=True)
 
+
     # -------------------------------------------------------------------------
     #  Required Dataset methods for PyTorch
     # -------------------------------------------------------------------------
@@ -167,19 +168,22 @@ class BaseballData(Dataset):
         image = image_array.reshape(1, side_len, side_len)
         image = torch.tensor(image, dtype=torch.float32)
 
+        # coordinates as tensor [xtl, ytl, xbr, ybr]
+        coords = torch.tensor([row["xtl"], row["ytl"], row["xbr"], row["ybr"]], dtype=torch.float32)
+
         # label from 'moving' attribute (0 or 1)
         label = 1 if str(row["moving"]).lower() == "true" else 0
         label = torch.tensor(label, dtype=torch.long)
 
-        return image, label
+        return image, label, coords
 
 repo_url = "https://github.com/khemkandel/research-public/tree/main"
 traindata = BaseballData(repo_url, image_size=(28, 28))
 loader = DataLoader(traindata, batch_size=8, shuffle=True)
 
 # Get one batch
-images, labels = next(iter(loader))
-print("Batch shapes:", images.shape, labels)
+images, labels, coords = next(iter(loader))
+print("Batch shapes:", images.shape, labels, coords)
 
 # Visualize first image in the batch
 image_tensor = images[0]            # [1, H, W]
