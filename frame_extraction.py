@@ -1,8 +1,8 @@
 import cv2
 import os
 
-video_dir = "/Users/hugocorado/Documents/Raw Videos/"
-output = "/Users/hugocorado/Documents/PROJECT_FRAMES/"
+video_dir = "C:/Users/Tech/OneDrive - University of Nebraska at Omaha/DataScience/BusinessForecasting-ECON8310/final-project/videos"
+output = "C:/Users/Tech/OneDrive - University of Nebraska at Omaha/DataScience/BusinessForecasting-ECON8310/final-project/frames"
 
 # Create output directory if it doesn't exist
 os.makedirs(output, exist_ok=True)
@@ -10,7 +10,7 @@ os.makedirs(output, exist_ok=True)
 # Loop through all .mov files in video_dir
 for video_file in os.listdir(video_dir):
 
-    # Construct full video path
+    # Construct full video pathsa
     video_path = os.path.join(video_dir, video_file)
 
     # Remove .mov extension
