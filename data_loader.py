@@ -1,17 +1,16 @@
-from numpy._core import records
+import matplotlib.pyplot as plt
+import numpy as np
+import os
+import pandas as pd
 import torch
+import xml.etree.ElementTree as xmlET
+from pathlib import Path
+from PIL import ImageOps
+from PIL import Image
+from urllib.parse import quote
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
-import requests
-import xml.etree.ElementTree as xmlET
-import pandas as pd
-import numpy as np
-from io import BytesIO
-from PIL import Image
-import os
-from urllib.parse import quote
-import matplotlib.pyplot as plt
-from pathlib import Path
+
 
 class BaseballData(Dataset):
     """
@@ -90,22 +89,30 @@ class BaseballData(Dataset):
         for frame, objects in tracked_items.items():
           image_found = False
           for ext in [".jpg", ".jpeg", ".png"]:
-              image_url = f"{frames_base_folder.rstrip('/')}/{quote(base_name)}/{quote(base_name)}_frame{frame}{ext}"
-              if os.path.exists(image_url):
-                  img = Image.open(image_url).convert("L")
-                  original_size = img.size  # (width, height)
-                  img = img.resize(self.image_size)
-                  flat_pixels = np.array(img).flatten().tolist()
-                  image_found = True
-                  frame_info = {
-                      "image" : img,
-                      #"image" : flat_pixels,
-                      "image_url" : image_url,
-                      "tracked_objects" : objects,
-                      "original_size": original_size  # store original frame size
-                  }
-                  frame_list.append(frame_info)
-                  break
+              image_file = f"{frames_base_folder.rstrip('/')}/{quote(base_name)}/{quote(base_name)}_frame{frame}{ext}"
+              if os.path.exists(image_file):
+                # Convert to grayscale
+                # img = Image.open(image_file).convert("L") 
+
+                img = Image.open(image_file)
+                img = img.convert("RGB")
+                #img = img.rotate(90, expand=True)  # rotate 90° counter - clockwise
+                
+                original_size = img.size  # (width, height)
+                img = img.resize(self.image_size)
+
+                #flat_pixels = np.array(img).flatten().tolist()
+
+                image_found = True
+                frame_info = {
+                    "image" : img,
+                    #"image" : flat_pixels,
+                    "image_file" : image_file,
+                    "tracked_objects" : objects,
+                    "original_size": original_size  # store original frame size
+                }
+                frame_list.append(frame_info)
+                break
 
           if not image_found:
               print(f"Missing frame image for {base_name}_frame{frame}")
@@ -186,27 +193,37 @@ class BaseballData(Dataset):
     def __getitem__(self, idx):
         """Return one sample (image tensor, label tensor)."""
         row = self.raw_data.iloc[idx]
+        image_file = row['image_file']
+        print(f"Image Name = {row['image_file']}")
 
-        # # Convert PIL image to a PyTorch Tensor (grayscale, add batch dim if needed later)
+        # Convert PIL image to a PyTorch Tensor
+        # Tensor will have data in the order of height , weight and channel (H, W, C)
         image_np = np.array(row["image"], dtype=np.float32) / 255.0
 
-        # # Add channel dimension (C, H, W) for grayscale images
-        image = torch.tensor(image_np, dtype=torch.float32).unsqueeze(0)
+        #Needed Format for PyTorch tensors  (C, H, W)
+        image_np = np.transpose(image_np, (2, 0, 1))
+       
+        image = torch.tensor(image_np, dtype=torch.float32)
 
+        # For Scaling Purpose
+        #-------------------------
         orig_w, orig_h = row['original_size']
         new_w, new_h = self.image_size
 
         tracked_items = row["tracked_objects"]
-        # coordinates as tensor list of [xtl, ytl, xbr, ybr]
+
+        #Create tracked Items coordinates as list of [xtl, ytl, xbr, ybr]
         all_coordinates = []
         for item in tracked_items:
             coords_dict = item['coorindates']
             # Extract the values in a specific order: xtl, ytl, xbr, ybr
+
             # Scale it propotionally to our image size
             xtl = coords_dict['xtl'] * (new_w / orig_w)
             ytl = coords_dict['ytl'] * (new_h / orig_h)
             xbr = coords_dict['xbr'] * (new_w / orig_w)
             ybr = coords_dict['ybr'] * (new_h / orig_h)
+
             all_coordinates.append([xtl, ytl, xbr, ybr])
 
         #print(all_coordinates)
@@ -215,6 +232,7 @@ class BaseballData(Dataset):
         # label from 'moving' attribute (0 or 1)
         label_list = [1 if item.lower() == "true" else 0 for item in [item['moving'] for item in tracked_items]]
         labels_list_torch = torch.tensor(label_list, dtype=torch.long)
+
         #print(label_list)
         #print(label_list_torch)
         return image, labels_list_torch, coordinates_list_torch
@@ -235,13 +253,9 @@ class BaseballData(Dataset):
                └─ imageid2_frame0.jp
 """
 
-
-
-
-
 base_folder = "C:/Users/Tech/OneDrive - University of Nebraska at Omaha/DataScience/BusinessForecasting-ECON8310/econ8310-assignment3"
 base_folder = "C:/Users/Tech/OneDrive - University of Nebraska at Omaha/DataScience/BusinessForecasting-ECON8310/final-project"
-traindata = BaseballData(base_folder, image_size=(28, 28))
+traindata = BaseballData(base_folder, image_size=(224, 224))
 loader = DataLoader(traindata, batch_size=8, shuffle=True,collate_fn=lambda x: traindata.collate_fn(x))
 
 # Get one batch
@@ -251,10 +265,20 @@ print("Labels for first image:", labels[0])
 print("Coords for first image:", coords[0])
 
 # Visualize first image
-image_tensor = images[0]            
-image_np = image_tensor.squeeze().numpy()  # remove channel dimension
+image_tensor = images[0]      
 
-plt.imshow(image_np, cmap="gray")
+# remove channel dimension
+# For Graysclae Image            
+#image_np = image_tensor.squeeze().numpy()  
+#plt.imshow(image_np, cmap="gray")
+
+#Orders the tensor to (H,W,C) for Ploting
+#---------------------------------------------
+image_np = image_tensor.permute(1, 2, 0).numpy()
+
+
+plt.clf()   # Clear the current figure
+plt.imshow(image_np)
 
 #draw bounding boxes
 for box in coords[0]:

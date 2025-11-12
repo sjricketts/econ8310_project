@@ -31,6 +31,7 @@ for video_file in os.listdir(video_dir):
     while success:
         # Rotate image 90 degrees clockwise to make it vertical
         image_vertical = cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
+        image_vertical = image
         filename = os.path.join(video_output_dir, f"{video_name}_frame{count}.jpg")
         result = cv2.imwrite(filename, image_vertical)
         if result:
