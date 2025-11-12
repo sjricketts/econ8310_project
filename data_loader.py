@@ -1,3 +1,4 @@
+import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -31,16 +32,68 @@ class BaseballData(Dataset):
         image_size (tuple): Resize frames to this (default (28,28))
     """
 
-    def __init__(self, base_folder, image_size=(28, 28)):
+    def __init__(self, base_folder, videofolder='videos', annotation_folder='annotations', extract_videos=False, image_size=(28, 28)):
         super().__init__()
         self.base_folder = base_folder
         self.image_size = image_size
+        self.video_folder = videofolder
+        self.annotaion_folder = annotation_folder
+        self.extract_videos = extract_videos
 
         print("Initializing dataset...")
+        self._frame_extractor() if self.extract_videos else None
         self.raw_data = self._consolidate_from_github_repo()
         if self.raw_data.empty:
             raise ValueError("No data found — check repo path or annotations.")
         print(f"Dataset loaded with {len(self.raw_data)} samples")
+
+
+    def _frame_extractor(self):
+            video_dir = f"{self.base_folder}/{self.video_folder}"
+            output = f"{self.base_folder}/frames"
+
+            # Create output directory if it doesn't exist
+            os.makedirs(output, exist_ok=True)
+
+            # Loop through all .mov files in video_dir
+            for video_file in os.listdir(video_dir):
+
+                # Construct full video pathsa
+                video_path = os.path.join(video_dir, video_file)
+
+                # Remove .mov extension
+                video_name = os.path.splitext(video_file)[0]
+
+                # Create a folder for this video's frames
+                video_output_dir = os.path.join(output, video_name)
+                os.makedirs(video_output_dir, exist_ok=True)
+
+                print(f"\nProcessing: {video_file}")
+
+                vidcap = cv2.VideoCapture(video_path)
+
+                print(f"Video opened successfully. Extracting frames to: {video_output_dir}")
+
+                success, image = vidcap.read()
+                count = 0
+                while success:
+                    # Rotate image 90 degrees clockwise to make it vertical
+                    image_vertical = cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
+                    image_vertical = image
+                    filename = os.path.join(video_output_dir, f"{video_name}_frame{count}.jpg")
+                    result = cv2.imwrite(filename, image_vertical)
+                    if result:
+                        print(f'Saved frame {count}: {filename}')
+                    else:
+                        print(f'Failed to save frame {count}')
+                    success, image = vidcap.read()
+                    count += 1
+
+                print(f"Total frames extracted from {video_file}: {count}")
+                vidcap.release()
+
+            print("\nAll videos processed!")
+
 
     # -------------------------------------------------------------------------
     #  Helper methods (previous standalone functions, now encapsulated)
@@ -138,7 +191,7 @@ class BaseballData(Dataset):
 
         #specify the location of annotations and frames images
         #-------------------------------------------------------
-        annotations_path = "annotations"
+        annotations_path = self.annotaion_folder
         frames_path = "frames"
 
 
@@ -181,6 +234,39 @@ class BaseballData(Dataset):
         # keep labels and coords as lists (different lengths)
         return images, labels, coords
 
+    def visualize_batch(self, loader, batch_index=0):
+        """
+        Visualize one batch from a DataLoader.
+        """
+
+        batch_iter = iter(loader)
+        for _ in range(batch_index + 1):
+            images, labels, coords = next(batch_iter)
+
+        print("Batch shapes:", images.shape)
+        print("Labels for first image:", labels[0])
+        print("Coords for first image:", coords[0])
+
+        # Pick first image from batch
+        image_tensor = images[0]
+        image_np = image_tensor.permute(1, 2, 0).numpy()
+
+        
+        plt.clf()   # Clear the current figure
+        plt.imshow(image_np)
+
+        # Draw bounding boxes
+        for box in coords[0]:
+            xtl, ytl, xbr, ybr = box
+            plt.gca().add_patch(
+                plt.Rectangle((xtl, ytl), xbr - xtl, ybr - ytl,
+                            edgecolor='red', facecolor='none', linewidth=1)
+            )
+
+        plt.title(f"Moving labels: {labels[0].tolist()}")
+        plt.axis('off')
+        plt.show()
+
 
     # -------------------------------------------------------------------------
     #  Required Dataset methods for PyTorch
@@ -196,9 +282,17 @@ class BaseballData(Dataset):
         image_file = row['image_file']
         print(f"Image Name = {row['image_file']}")
 
+        # ---- Image existence & validity check ----
+        if row.get("image") is None:
+            raise FileNotFoundError(f"No image data found for index {idx} ({image_file})")
+
         # Convert PIL image to a PyTorch Tensor
         # Tensor will have data in the order of height , weight and channel (H, W, C)
         image_np = np.array(row["image"], dtype=np.float32) / 255.0
+
+        # If image array is empty or corrupted
+        if image_np.size == 0:
+            raise ValueError(f"Image at index {idx} ({image_file}) is empty or invalid.")
 
         #Needed Format for PyTorch tensors  (C, H, W)
         image_np = np.transpose(image_np, (2, 0, 1))
@@ -253,41 +347,8 @@ class BaseballData(Dataset):
                └─ imageid2_frame0.jp
 """
 
-base_folder = "C:/Users/Tech/OneDrive - University of Nebraska at Omaha/DataScience/BusinessForecasting-ECON8310/econ8310-assignment3"
-base_folder = "C:/Users/Tech/OneDrive - University of Nebraska at Omaha/DataScience/BusinessForecasting-ECON8310/final-project"
-traindata = BaseballData(base_folder, image_size=(224, 224))
+
+base_folder = "C:/Users/Tech/OneDrive - University of Nebraska at Omaha/DataScience/BusinessForecasting-ECON8310/econ8310-assignment3/econ8310_project"
+traindata = BaseballData(base_folder=base_folder, videofolder='videos', annotation_folder='annotations', extract_videos=False,image_size=(224, 224))
 loader = DataLoader(traindata, batch_size=8, shuffle=True,collate_fn=lambda x: traindata.collate_fn(x))
-
-# Get one batch
-images, labels, coords = next(iter(loader))
-print("Batch shapes:", images.shape)
-print("Labels for first image:", labels[0])
-print("Coords for first image:", coords[0])
-
-# Visualize first image
-image_tensor = images[0]      
-
-# remove channel dimension
-# For Graysclae Image            
-#image_np = image_tensor.squeeze().numpy()  
-#plt.imshow(image_np, cmap="gray")
-
-#Orders the tensor to (H,W,C) for Ploting
-#---------------------------------------------
-image_np = image_tensor.permute(1, 2, 0).numpy()
-
-
-plt.clf()   # Clear the current figure
-plt.imshow(image_np)
-
-#draw bounding boxes
-for box in coords[0]:
-    xtl, ytl, xbr, ybr = box
-    plt.gca().add_patch(
-        plt.Rectangle((xtl, ytl), xbr-xtl, ybr-ytl, 
-                      edgecolor='red', facecolor='none', linewidth=1)
-    )
-
-plt.title(f"Moving labels: {labels[0].tolist()}")
-plt.axis('off')
-plt.show()
+traindata.visualize_batch(loader)
